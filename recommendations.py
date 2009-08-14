@@ -25,17 +25,17 @@ import sys
 import operator
 import os.path
 from datetime import datetime
-from data_generator import file_next, userlist_next, parse_data
 import logging
 
-"""
-First attempt at a complete trivial version of the algorithm.  I'd be surprised
-if it beats 20% :)
-"""
+#"""
+#First attempt at a complete trivial version of the algorithm.  I'd be surprised
+#if it beats 20% :)
+#"""
 
 USERCACHE_PATH = os.path.join('output', 'usercache.txt')
 DATA_PATH = os.path.join('data', 'data.txt')
-TEST_PATH = os.path.join('data', 'test.txt)'
+REPOS_PATH = os.path.join('data', 'repos.txt')
+TEST_PATH = os.path.join('data', 'test.txt')
 
 def file_next():
     with open(DATA_PATH, 'r') as f:
@@ -65,7 +65,30 @@ def parse_data():
 
     return users, projects
 
+class RepoLookup:
+    def __init__(self):
+        self.map = {}
+        with open(REPOS_PATH, 'r') as f:
+            for line in f:
+                (project_id, data) = line[:-1].split(':')
+                fields = data.split(',')
+                map = {'url': fields[0]}
+                if 3 == len(fields):
+                    map['parent'] = int(fields[2])
+                self.map[int(project_id)] = map
 
+    def getkey(self, project_id, key):
+        value = None
+        if project_id in self.map and key in self.map[project_id]:
+            value = self.map[project_id][key]
+        return value
+
+    def parent(self, project_id):
+        return self.getkey(project_id, 'parent')
+
+    def url(self, project_id):
+        return self.getkey(project_id, 'url')
+        
 class UserCache:
     def __init__(self, users, projects, clean=False):
         self.users = users
@@ -126,6 +149,7 @@ class Recommendations:
     def setup(self):
         self.users, self.projects = parse_data()
         self.usercache = UserCache(self.users, self.projects)
+        self.repoLookup = RepoLookup()
 
     def rank_projects(self, users):
         c = 0
@@ -150,7 +174,12 @@ class Recommendations:
                         continue
                     if pid not in guesses:
                         guesses[pid] = 0
-                    guesses[pid] = guesses[pid] + 1
+                    parent = self.repoLookup.parent(pid)
+                    if parent != None and parent in project_set:
+                        guesses[pid] = guesses[pid] + 2
+                    else:
+                        guesses[pid] = guesses[pid] + 1
+
             items = sorted(guesses.items(), key=operator.itemgetter(1), reverse=True)
             items = [x[0] for x in items[:10]] 
 
