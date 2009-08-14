@@ -37,6 +37,21 @@ DATA_PATH = os.path.join('data', 'data.txt')
 REPOS_PATH = os.path.join('data', 'repos.txt')
 TEST_PATH = os.path.join('data', 'test.txt')
 
+logger = logging.getLogger("github-rico")
+def enable_logging():
+    """
+    Configures console logging for the application's logger.  By
+    default, logging operations will not output log statements
+    unless the logger has been configured.
+    """
+    logger.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(levelname)s - %(message)s")
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+enable_logging()
+
 def file_next():
     with open(DATA_PATH, 'r') as f:
         for line in f:
@@ -72,7 +87,10 @@ class RepoLookup:
             for line in f:
                 (project_id, data) = line[:-1].split(':')
                 fields = data.split(',')
-                map = {'url': fields[0]}
+                map = {
+                    'url': fields[0],
+                    'founder': fields[0].split('/')[0]
+                    }
                 if 3 == len(fields):
                     map['parent'] = int(fields[2])
                 self.map[int(project_id)] = map
@@ -88,7 +106,10 @@ class RepoLookup:
 
     def url(self, project_id):
         return self.getkey(project_id, 'url')
-        
+
+    def founder(self, project_id):
+        return self.getkey(project_id, 'founder')
+
 class UserCache:
     def __init__(self, users, projects, clean=False):
         self.users = users
@@ -98,7 +119,7 @@ class UserCache:
             self.create_cache()
         else:
             self.read_cache()
-        logging.debug("initalized with %d keys" % len(self.usercache.keys()))
+        logger.debug("initalized with %d keys" % len(self.usercache.keys()))
 
     def __getitem__(self, k):
         return self.usercache[k]
@@ -128,17 +149,19 @@ class UserCache:
                 similar_users = {}
                 for project_id in projects:
                     for uid in self.projects[project_id]:
-                        if uid == user_id:
-                            continue
+#                        if uid == user_id:
+#                            continue
                         if uid not in similar_users:
                             similar_users[uid] = 0
                         similar_users[uid] = similar_users[uid] + 1
                 items = sorted(similar_users.items(), key=operator.itemgetter(1), reverse=True)
+#                 for item in items:
+#                     logger.debug("found %s:%s" % item)
                 usercache[user_id] = [x[0] for x in items[:30]]
                 f.write("%d:%s\n" % (user_id, ",".join(map(str, usercache[user_id]))))
                 c = c + 1
                 if c % 1000 == 0:
-                    logging.debug("seed: %d of %d" % (c, total))
+                    logger.debug("seed: %d of %d" % (c, total))
 
         self.usercache = usercache
 
@@ -155,18 +178,19 @@ class Recommendations:
         c = 0
         for user_id in users:
             if user_id not in self.users:
-                logging.warn("cannot find test user %d in user cache" % user_id)
+                logger.warn("cannot find test user %d in user cache" % user_id)
                 continue
             similar_users = self.usercache[user_id]
             guesses = {}
             project_set = set(self.users[user_id])
+            founder_set = set([self.repoLookup.founder(pid) for pid in self.users[user_id]])
             for uid in similar_users:
                 if uid == user_id: continue
                 
 #                print self.users
 #                print("looking for uid=%s" % uid)
                 if uid not in self.users:
-                    logging.warn("cannot find related user %d in user map" % uid)
+                    logger.warn("cannot find related user %d in user map" % uid)
                     continue
 
                 for pid in self.users[uid]:
@@ -175,7 +199,12 @@ class Recommendations:
                     if pid not in guesses:
                         guesses[pid] = 0
                     parent = self.repoLookup.parent(pid)
-                    if parent != None and parent in project_set:
+                    founder = self.repoLookup.founder(pid)
+                    if founder in founder_set:
+#                        logger.info('ranking %d higher because of founder %s' % (pid, founder))
+                        guesses[pid] = guesses[pid] + 5
+                    elif parent != None and parent in project_set:
+#                        logger.info('ranking %d higher because of parent %d' % (pid, parent))
                         guesses[pid] = guesses[pid] + 3
                     else:
                         guesses[pid] = guesses[pid] + 1
