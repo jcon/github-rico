@@ -176,7 +176,7 @@ class Recommendations:
                         guesses[pid] = 0
                     parent = self.repoLookup.parent(pid)
                     if parent != None and parent in project_set:
-                        guesses[pid] = guesses[pid] + 2
+                        guesses[pid] = guesses[pid] + 3
                     else:
                         guesses[pid] = guesses[pid] + 1
 
